@@ -278,12 +278,12 @@ function loop()
 		{
 			create_circle(-funnel_size/8+Math.random()*funnel_size/4, base_y-funnel_height, ball_r);
 			--num_balls;
-			drop_time = 1;
+			drop_time = Math.floor((180-slider2.value)/30);
 		}
 	}
 	else drop_time--;
 
-	world.Step(1/(150-slider2.value), 10, 10);
+	world.Step(1/(180-slider2.value), 10, 10);
 	world.ClearForces();
 	//world.DrawDebugData();
 
