@@ -1,5 +1,4 @@
 // ***************************  PAGE SETTING  **************************
-
 String.prototype.format = function () {
     var values = arguments;
     return this.replace(/\{(\d+)\}/g, function (match, index) {
@@ -24,6 +23,7 @@ var button1 = document.getElementById("button1div");
 var fun1 = document.getElementById("fun1div");
 var fun2 = document.getElementById("fun2div");
 var fun3 = document.getElementById("fun3div");
+var fun4 = document.getElementById("fun4div");
 var canvas = document.createElement("canvas");
 canvas.width = 0;
 canvas.height = 0;
@@ -66,6 +66,7 @@ function resize()
 	fun1.style = "top: {0}px; left: {1}px".format(height-50, width-50);
 	fun2.style = "top: {0}px; left: {1}px".format(height-50, width-100);
 	fun3.style = "top: {0}px; left: {1}px".format(height-50, width-150);
+	fun4.style = "top: {0}px; left: {1}px".format(height-50, width-200);
 
 	ox = canvas.width/2;
 	oy = canvas.height/2;
@@ -114,15 +115,16 @@ const funnel_height = baffle_height+120;
 const funnel_size = 300;
 
 const base_width = (gap+board_width)*num_gaps+board_width;
-const cyl_gap = (board_width+gap)/2;//*Math.sqrt(3);
+const cyl_gap = (board_width+gap)/2;
 
-var stat_balls = new Array(num_gaps);
-var stat_value = new Array(num_gaps);
-var stat_total = 0;
 const threshold = 0.001;
 const smooth_speed = 0.05;
-const num_points = 100;
-const tau = 0.5;
+const num_points = 150;
+const tau = 1;
+var stat_balls = new Array(num_gaps);
+var stat_value = new Array(num_gaps);
+var weighted_value = Array(num_points);
+var stat_total = 0;
 
 var device = new Image();
 device.src = "img/device.png";
@@ -198,7 +200,6 @@ function create_circle(x, y, r, dynamic=1)
 	fixtureDef.density = 1;
 	fixtureDef.restitution = .3;
 	fixtureDef.friction = .5;
-	//if(dynamic) fixtureDef.filter.groupIndex = -1;
 	var body = world.CreateBody(bodyDef);
 	body.CreateFixture(fixtureDef);
 	body.userData = 0;
@@ -234,6 +235,10 @@ function create_debug()
 var num_balls = 0;
 var drop_time = 0;
 fun1.onclick = function() {
+	for(var i = 0; i < num_points; i++)
+	{
+		weighted_value[i] = 0;
+	}
 	if(!num_balls) num_balls += slider1.value;
 };
 
@@ -252,6 +257,10 @@ fun2.onclick = function() {
 };
 
 fun3.onclick = function() {
+	for(var i = 0; i < num_points; i++)
+	{
+		weighted_value[i] = 0;
+	}
 	for(var body = world.GetBodyList(); body; body = body.GetNext())
 	{
 		if(body.GetType() == b2Body.b2_dynamicBody)
@@ -266,6 +275,30 @@ fun3.onclick = function() {
 	}
 	stat_total = 0;
 	num_balls = 0;
+}
+
+fun4.onclick = function() {
+	// draw a smooth curve using locally weighted linear regression
+	var X = math.matrix(math.ones(num_points, 2));
+	var y = math.matrix(math.zeros(num_points, 1));
+	var lambdas = math.matrix(math.zeros(num_points));
+	var cur;
+	for(i = 0; i < num_points; i++)
+	{
+		cur = i/num_points*num_gaps;
+		lambdas = math.subset(lambdas, math.index(i), cur);
+		X = math.subset(X, math.index(i, 1), cur);
+		y = math.subset(y, math.index(i, 0), stat_value[Math.floor(cur)]);
+	}
+	math.reshape(lambdas, [num_points]);
+	var W, theta;
+	for(i = 0; i < num_points; i++)
+	{
+		cur = math.subset(lambdas, math.index(i));
+		W = math.diag(math.exp(math.multiply(math.divide(math.square(math.subtract(lambdas, cur)), 2*tau*tau), -1)));
+		theta = math.multiply(math.inv(math.multiply(math.multiply(math.transpose(X), W), X)), math.multiply(math.multiply(math.transpose(X), W), y));
+		weighted_value[i] = math.subset(theta, math.index(0,0)) + cur*math.subset(theta, math.index(1,0));
+	}
 }
 
 function loop()
@@ -327,7 +360,7 @@ function loop()
 				else if(body.GetPosition().y*scale > base_y-clap_height/2-10 && body.GetPosition().y*scale < base_y-clap_height/2+10)
 				{
 					cxt.beginPath()
-					cxt.rect(body.GetPosition().x*scale+ox-board_width/2, body.GetPosition().y*scale+oy-clap_height/2, board_width, clap_height);
+					cxt.rect(body.GetPosition().x*scale+ox-board_width/2+2, body.GetPosition().y*scale+oy-clap_height/2, board_width-2, clap_height);
 					cxt.strokeStyle = '#000000';
 					cxt.stroke();
 					cxt.fillStyle = '#FCFFF4';
@@ -365,22 +398,12 @@ function loop()
 		cxt.fill();
 	}
 
-	var weighted_value = Array(num_points);
-	for(i = 0; i < num_points; i++)
-	{
-		weighted_value[i] = 0;
-		for(var j = 0; j < num_points; j++)
-		{
-			weighted_value[i] += stat_value[Math.floor(j/num_points*num_gaps)] * Math.exp(-Math.pow((i-j)/num_points*num_gaps,2)/2/tau/tau) / 10;
-		}
-	}
 	cxt.beginPath();
 	for(i = 0; i < num_points; i++)
 	{
 		if(i == 0) cxt.lineTo((gap+board_width)*(i/num_points*num_gaps-num_gaps/2)+gap/2+ox-board_width, base_y-clap_height*4*weighted_value[i]+oy);
 		else cxt.lineTo((gap+board_width)*(i/num_points*num_gaps-num_gaps/2)+gap/2+ox-board_width, base_y-clap_height*4*weighted_value[i]+oy);
 	}
-	//if(stat_total) alert(weighted_value);
 	cxt.stroke();
 }
 
